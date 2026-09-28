@@ -1,0 +1,28 @@
+# Python virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Environment variables & secrets
+.env
+.env.*
+api_keys/
+
+# Database & local data
+*.db
+*.sqlite3
+faiss_index/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+.DS_Store

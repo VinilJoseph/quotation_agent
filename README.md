@@ -153,3 +153,57 @@ Example response:
 ## License
 
 No explicit license has been added to this project yet.
+
+
+
+=============================================================
+                   ERP - AI QUOTATION MVP
+=============================================================
+
+[ 1. PRESENTATION LAYER ] 
++-----------------------------------------------------------+
+| React.js Frontend (Vite + Tailwind)                       |
+|   - Input: Natural language request                       |
+|   - UI: Real-time Agent Execution Trace (Logs)            |
+|   - Output: Rendered Markdown Quotation                   |
++-----------------------------------------------------------+
+                             |
+                             | HTTP POST (/generate)
+                             v
+[ 2. API & APPLICATION LAYER ]
++-----------------------------------------------------------+
+| FastAPI Backend                                           |
+|   - Initializes TypedDict QuoteState                      |
+|   - Injects request into LangGraph pipeline               |
++-----------------------------------------------------------+
+                             |
+                             v
+[ 3. LANGGRAPH ORCHESTRATOR (Agentic Workflow) ]
+                           (START)
+                              |
+                     +--------v--------+
+                     | Classifier Node | ---> [Handles Greetings/Chat]
+                     +--------+--------+
+                              |
+                     (If 'generate_quote')
+                              v
+                     +--------v--------+
+                     |  Analyzer Node  | ---> (Extracts Client & Product)
+                     +--------+--------+
+                              |
+                              v
+                     +--------v--------+       +-------------------+
+                     | SQL Fetcher Node| <---> | SQLite Database   |
+                     +--------+--------+       | (Client Discounts)|
+                              |                +-------------------+
+                              v
+                     +--------v--------+       +-------------------+
+                     | RAG Fetcher Node| <---> | BM25 Retriever    |
+                     +--------+--------+       | (Product Pricing) |
+                              |                +-------------------+
+                              v
+                     +--------v--------+       +-------------------+
+                     | Quote Generator | <---> | OpenRouter LLM    |
+                     +--------+--------+       | (w/ Fallback Logic|
+                              |                +-------------------+
+                            (END)

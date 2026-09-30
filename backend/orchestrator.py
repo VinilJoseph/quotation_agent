@@ -6,10 +6,12 @@ from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from tools import fetch_client_details, fetch_product_specs
 
+# Load environment variables
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+# Initialize LLM
 llm = ChatOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
@@ -21,7 +23,7 @@ llm = ChatOpenAI(
     }
 )
 
-# 1. Update State to include routing decisions
+# 1. State Definition
 class QuoteState(TypedDict):
     user_request: str
     client_name: str
@@ -32,7 +34,7 @@ class QuoteState(TypedDict):
     route: str # Tracks the decision made by the classifier
     logs: Annotated[list[str], operator.add]
 
-# 2. The Classifier Node
+# 2. Nodes
 def classifier_node(state: QuoteState):
     """Determines the user intent and routes the graph accordingly."""
     prompt = f"""
@@ -48,12 +50,11 @@ def classifier_node(state: QuoteState):
     """
     decision = llm.invoke(prompt).content.strip().lower()
     
-    # Send tool usage log
     log_msg = f"🧭 Classifier Node: Analyzed request and routed to -> [{decision.upper()}]"
     return {"route": decision, "logs": [log_msg]}
 
-# 3. The Analyzer Node (Only used for full quotes)
 def analyzer_node(state: QuoteState):
+    """Extracts entity details for a full quotation request."""
     prompt = f"""
     Extract the client name and the product requested from this text: '{state['user_request']}'.
     Format exactly as: Client: [name] | Product: [product]
@@ -66,9 +67,8 @@ def analyzer_node(state: QuoteState):
     log_msg = f"🧠 Analyzer Agent: Extracted Client -> '{client_name}', Product -> '{product}'"
     return {"client_name": client_name, "product_query": product, "logs": [log_msg]}
 
-# 4. Tool Nodes
 def sql_node(state: QuoteState):
-    # If skipping the analyzer (sql_only route), use the raw request as the search query
+    """Fetches structured data from the ERP database."""
     search_term = state.get("client_name") if state.get("client_name") else state["user_request"]
     client_data = fetch_client_details(search_term)
     
@@ -76,14 +76,13 @@ def sql_node(state: QuoteState):
     return {"sql_context": client_data, "logs": [log_msg]}
 
 def rag_node(state: QuoteState):
-    # If skipping the analyzer (rag_only route), use the raw request as the search query
+    """Fetches unstructured data from the Vector/BM25 Knowledge Base."""
     search_term = state.get("product_query") if state.get("product_query") else state["user_request"]
     pricing_data = fetch_product_specs(search_term)
     
     log_msg = f"📚 RAG Tool: Searched KB for pricing info."
     return {"rag_context": pricing_data, "logs": [log_msg]}
 
-# 5. Generator Nodes (Handling the different routes)
 def general_chat_node(state: QuoteState):
     """Handles simple greetings without using tools."""
     prompt = f"Respond politely as a Pax ERP AI Assistant to this message: '{state['user_request']}'"
@@ -92,7 +91,7 @@ def general_chat_node(state: QuoteState):
     return {"final_quotation": response, "logs": [log_msg]}
 
 def info_responder_node(state: QuoteState):
-    """Handles requests that just asked for info (SQL only or RAG only)."""
+    """Handles single-tool informational requests (SQL only or RAG only)."""
     prompt = f"""
     Answer the user's request: '{state['user_request']}'
     Using ONLY this data: 
@@ -104,18 +103,20 @@ def info_responder_node(state: QuoteState):
     return {"final_quotation": response, "logs": [log_msg]}
 
 def quote_generator_node(state: QuoteState):
-    """Writes the full quotation."""
+    """Generates the final comprehensive quotation."""
     prompt = f"""
     Write a professional commercial quotation.
-    Client Details: {state['sql_context']}
-    Product Pricing: {state['rag_context']}
+    
+    Client Details: {state.get('sql_context', 'No client data provided.')}
+    Product Pricing: {state.get('rag_context', 'No product data provided.')}
+    
     Format nicely in Markdown.
     """
     quote = llm.invoke(prompt).content
     log_msg = f"✍️ Quote Agent: Drafted final markdown quotation."
     return {"final_quotation": quote, "logs": [log_msg]}
 
-# 6. The Router Function (Defines where to go based on the classifier's decision)
+# 3. Routing Functions
 def route_request(state: QuoteState) -> Literal["general_chat", "sql_only", "rag_only", "generate_quote"]:
     route = state["route"]
     if "greeting" in route:
@@ -127,10 +128,23 @@ def route_request(state: QuoteState) -> Literal["general_chat", "sql_only", "rag
     else:
         return "generate_quote"
 
-# 7. Build the Graph
+def post_fetch_router(state: QuoteState) -> str:
+    # 1. If the user ONLY asked for RAG or SQL, force it to the info responder
+    if state.get("route") != "generate_quote":
+        return "info_responder"
+        
+    # 2. If generating a full quote, ensure both SQL and RAG run sequentially
+    if state.get("sql_context") and not state.get("rag_context"):
+         return "rag_fetcher"
+         
+    # 3. Once both are complete, go to the generator
+    return "quote_generator"
+
+
+# --- BUILD GRAPH ---
 workflow = StateGraph(QuoteState)
 
-# Add all nodes
+# 1. Add Nodes
 workflow.add_node("classifier", classifier_node)
 workflow.add_node("analyzer", analyzer_node)
 workflow.add_node("sql_fetcher", sql_node)
@@ -139,10 +153,10 @@ workflow.add_node("chat_responder", general_chat_node)
 workflow.add_node("info_responder", info_responder_node)
 workflow.add_node("quote_generator", quote_generator_node)
 
-# Add Edges
+# 2. Initial Entry
 workflow.add_edge(START, "classifier")
 
-# Conditional Routing from the Classifier
+# 3. Branch 1: From the Classifier
 workflow.add_conditional_edges(
     "classifier",
     route_request,
@@ -154,40 +168,23 @@ workflow.add_conditional_edges(
     }
 )
 
-# Flow for 'generate_quote'
-workflow.add_edge("analyzer", "sql_fetcher")
-workflow.add_edge("sql_fetcher", "rag_fetcher")
-workflow.add_edge("rag_fetcher", "quote_generator")
-
-# Flow for 'sql_only' and 'rag_only'
-workflow.add_edge("sql_fetcher", "info_responder")  # Note: in a full quote, this edge gets overridden by the deterministic path, but for a simple MVP graph we ensure info_responder catches single queries.
-
-# To handle the graph complexity safely in LangGraph, we define explicit routing from the fetchers based on the original route.
-def post_fetch_router(state: QuoteState) -> str:
-    if state["route"] == "generate_quote":
-        # If generating a quote, SQL goes to RAG, RAG goes to Quote Generator
-        if state.get("sql_context") and not state.get("rag_context"):
-             return "rag_fetcher"
-        return "quote_generator"
-    else:
-        # If just answering a question, go to the info responder
-        return "info_responder"
-
-# We must remove the static edges for fetchers and use the post_fetch_router
-# Remove these from above:
-# workflow.add_edge("analyzer", "sql_fetcher") 
-# workflow.add_edge("sql_fetcher", "rag_fetcher")
-# workflow.add_edge("rag_fetcher", "quote_generator")
-
+# 4. Branch 2: The Quote Pipeline
 workflow.add_edge("analyzer", "sql_fetcher")
 
-# After SQL, where do we go?
-workflow.add_conditional_edges("sql_fetcher", post_fetch_router, {"rag_fetcher": "rag_fetcher", "info_responder": "info_responder"})
+# 5. Branch 3: Post-Fetch Routing (CRITICAL: Do not use normal add_edge here)
+workflow.add_conditional_edges(
+    "sql_fetcher", 
+    post_fetch_router, 
+    {"rag_fetcher": "rag_fetcher", "info_responder": "info_responder"}
+)
 
-# After RAG, where do we go?
-workflow.add_conditional_edges("rag_fetcher", post_fetch_router, {"quote_generator": "quote_generator", "info_responder": "info_responder"})
+workflow.add_conditional_edges(
+    "rag_fetcher", 
+    post_fetch_router, 
+    {"quote_generator": "quote_generator", "info_responder": "info_responder"}
+)
 
-# End points
+# 6. End States
 workflow.add_edge("chat_responder", END)
 workflow.add_edge("info_responder", END)
 workflow.add_edge("quote_generator", END)

@@ -12,8 +12,12 @@ Build an AI-powered quotation assistant that automates the creation of commercia
 6. **Display** execution trace (agent logs) in frontend for transparency
 
 ## Key Features
-- FastAPI backend with /generate endpoint
-- React + Vite frontend with agent trace visualization
+- FastAPI backend with /generate, /clients, and PATCH /clients/{id} endpoints
+- React + Vite frontend with agent trace visualization and digital ticket pass
+- Multiple Polished Quotation Templates (Pax Executive, Gulf Prestige, Technical Blueprint, Classic Commercial)
+- Company Default Template Auto-Selection for newly generated quotations
+- Per-Quote Template Override & Persistent State Management (retains original look on historical quotes)
+- Full-fidelity Print Preview Modal with Scaled A4 Sheet rendering & clean @media print stylesheet
 - LangGraph orchestration for multi-step agent flows
 - SQLite database with seeded UAE client data (ADNOC, Emirates Steel, etc.)
 - BM25 retriever for product/pricing knowledge base

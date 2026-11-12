@@ -15,10 +15,18 @@ This project demonstrates an agent workflow for a business quotation use case:
 
 ## Features
 
-- FastAPI backend with a `/generate` endpoint
-- React + Vite frontend
+- FastAPI backend with `/generate`, `/clients`, and `PATCH /clients/{id}` endpoints
+- React + Vite frontend with Tailwind CSS and responsive ticket-pass UI
+- **Multiple Commercial Quotation Templates**:
+  - **Pax Executive**: Modern minimalist corporate slate with executive summary and Level-3 authorization stamp
+  - **Gulf Prestige**: Sovereign UAE emerald and gold theme with bilingual headers and official circular seal
+  - **Technical Blueprint**: High-density engineering specification with monospace SKUs and SLA recovery matrix
+  - **Classic Commercial**: Formal ADGM tender letterhead with milestone payment schedule and corporate seal
+- **Company Default Templates**: Pre-assigned default templates per enterprise client in SQLite with live directory configuration
+- **Per-Quote Template Overrides & Persistence**: Switch templates per quote and save state permanently across quote selection
+- **Print Preview Modal & Clean Print Engine**: Scaled A4 preview before printing with dedicated `@media print` rules
 - LangGraph orchestration for multi-step agent flows
-- SQLite client database with sample UAE enterprise data
+- SQLite client database with sample UAE enterprise data (`pax_erp.db`)
 - BM25-based retrieval for product and pricing information
 - LLM-based quotation generation via OpenRouter
 - Debug-friendly agent logs shown in the frontend
@@ -48,6 +56,7 @@ quotation_agent/
 │   ├── database.py
 │   ├── main.py
 │   ├── orchestrator.py
+│   ├── populate_db.py
 │   ├── requirements.txt
 │   ├── tools.py
 │   └── pax_erp.db
@@ -60,7 +69,16 @@ quotation_agent/
 │   └── src/
 │       ├── App.jsx
 │       ├── index.css
-│       └── main.jsx
+│       ├── main.jsx
+│       └── templates/
+│           ├── ClassicCommercialTemplate.jsx
+│           ├── ExecutiveTemplate.jsx
+│           ├── GulfPrestigeTemplate.jsx
+│           ├── PrintPreviewModal.jsx
+│           ├── TechnicalBlueprintTemplate.jsx
+│           ├── TemplateRenderer.jsx
+│           └── templateRegistry.js
+├── QUOTATION_TEMPLATES.md
 └── README.md
 ```
 
